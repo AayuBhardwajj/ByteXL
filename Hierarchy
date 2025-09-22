@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dynamic Person Class Example</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: #0a0f1a;
+      color: #00ffe5;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    h1 {
+      text-align: center;
+      color: #00ffe5;
+      text-shadow: 0 0 10px #00ffe5, 0 0 20px #00ffe5;
+    }
+
+    .container {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 30px;
+    }
+
+    .card {
+      width: 280px;
+      background: rgba(10, 20, 40, 0.85);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 0 15px rgba(0, 255, 229, 0.6);
+      border: 1px solid rgba(0, 255, 229, 0.3);
+      transform: perspective(1000px) rotateY(10deg);
+      opacity: 0;
+      animation: fadeIn 1s forwards;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 22px;
+      color: #00ffe5;
+      text-shadow: 0 0 10px #00ffe5;
+    }
+
+    .card p {
+      margin: 8px 0;
+      color: #c8f9f6;
+    }
+
+    .student {
+      border-left: 6px solid #3b82f6;
+    }
+
+    .teacher {
+      border-left: 6px solid #10b981;
+    }
+
+    /* Typing effect */
+    .typing {
+      border-right: 2px solid #00ffe5;
+      white-space: nowrap;
+      overflow: hidden;
+      width: 0;
+      animation: typing 3s steps(40, end) forwards, blink 0.7s infinite;
+    }
+
+    @keyframes typing {
+      from { width: 0; }
+      to { width: 100%; }
+    }
+
+    @keyframes blink {
+      50% { border-color: transparent; }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: perspective(1000px) rotateY(20deg); }
+      to { opacity: 1; transform: perspective(1000px) rotateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <h1>⚡ Demonstrating Hierarchy ⚡</h1>
+  <div class="container" id="output"></div>
+
+  <script>
+    // ✅ Base Class: Person
+    class Person {
+      constructor(name, age) {
+        this.name = name;
+        this.age = age;
+      }
+      displayInfo() {
+        return `Name: ${this.name}, Age: ${this.age}`;
+      }
+    }
+
+    // ✅ Subclass: Student
+    class Student extends Person {
+      constructor(name, age, course) {
+        super(name, age);
+        this.course = course;
+      }
+      displayInfo() {
+        return `${super.displayInfo()}, Course: ${this.course}`;
+      }
+    }
+
+    // ✅ Subclass: Teacher
+    class Teacher extends Person {
+      constructor(name, age, subject) {
+        super(name, age);
+        this.subject = subject;
+      }
+      displayInfo() {
+        return `${super.displayInfo()}, Subject: ${this.subject}`;
+      }
+    }
+
+    // ✅ Create multiple instances
+    const people = [
+      new Student("Alice", 20, "Computer Science"),
+      new Student("Bruce", 22, "Mechanical Engineering"),
+      new Teacher("Mr. Stark", 45, "Artificial Intelligence"),
+      new Teacher("Dr. Banner", 50, "Physics")
+    ];
+
+    // ✅ Output container
+    const output = document.getElementById("output");
+
+    function createCard(title, info, type, delay) {
+      const card = document.createElement("div");
+      card.className = `card ${type}`;
+      card.style.animationDelay = `${delay}s`;
+      card.innerHTML = `
+        <h2 class="typing">${title}</h2>
+        <p>${info.replace(/, /g, "<br>")}</p>
+      `;
+      return card;
+    }
+
+    // ✅ Display each card with delay (Jarvis style intro)
+    people.forEach((person, i) => {
+      const type = person instanceof Student ? "student" : "teacher";
+      const title = type === "student" ? "🎓 Student Profile" : "👨‍🏫 Teacher Profile";
+      setTimeout(() => {
+        output.appendChild(createCard(title, person.displayInfo(), type, i * 0.5));
+      }, i * 1000);
+    });
+  </script>
+</body>
+</html>
