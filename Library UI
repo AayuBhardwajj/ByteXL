@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>React Library UI</title>
+  <!-- React & Babel -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    h1 {
+      text-align: center;
+      color: #00d9ff;
+      text-shadow: 0 0 10px #00d9ff, 0 0 20px #00aaff;
+    }
+
+    .library-container {
+      max-width: 600px;
+      margin: 30px auto;
+      background: rgba(25, 25, 50, 0.8);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 0 20px rgba(0, 217, 255, 0.6);
+    }
+
+    input, button {
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      margin: 5px 0;
+      font-size: 16px;
+      width: 100%;
+      outline: none;
+    }
+
+    input {
+      background: #0f3460;
+      color: #fff;
+    }
+
+    input::placeholder {
+      color: #bbb;
+    }
+
+    button {
+      background: #00d9ff;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      background: #00aaff;
+      color: #fff;
+      transform: scale(1.05);
+    }
+
+    .book-list {
+      margin-top: 20px;
+    }
+
+    .book-card {
+      background: #1a1a40;
+      border-left: 5px solid #00d9ff;
+      padding: 15px;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,217,255,0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: transform 0.2s ease;
+    }
+
+    .book-card:hover {
+      transform: translateX(5px);
+    }
+
+    .book-info {
+      color: #fff;
+    }
+
+    .remove-btn {
+      background: #ff3860;
+      color: #fff;
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .remove-btn:hover {
+      background: #ff1744;
+      transform: scale(1.1);
+    }
+  </style>
+</head>
+<body>
+  <h1>📚 Futuristic Library</h1>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    function Library() {
+      const [books, setBooks] = React.useState([
+        { title: "The Great Gatsby", author: "F. Scott Fitzgerald" },
+        { title: "1984", author: "George Orwell" },
+        { title: "To Kill a Mockingbird", author: "Harper Lee" },
+      ]);
+
+      const [search, setSearch] = React.useState("");
+      const [newTitle, setNewTitle] = React.useState("");
+      const [newAuthor, setNewAuthor] = React.useState("");
+
+      const filteredBooks = books.filter(
+        (b) =>
+          b.title.toLowerCase().includes(search.toLowerCase()) ||
+          b.author.toLowerCase().includes(search.toLowerCase())
+      );
+
+      const addBook = () => {
+        if (newTitle.trim() && newAuthor.trim()) {
+          setBooks([...books, { title: newTitle, author: newAuthor }]);
+          setNewTitle("");
+          setNewAuthor("");
+        }
+      };
+
+      const removeBook = (index) => {
+        setBooks(books.filter((_, i) => i !== index));
+      };
+
+      return (
+        <div className="library-container">
+          {/* 🔍 Search */}
+          <input
+            type="text"
+            placeholder="🔍 Search by title or author..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          {/* ➕ Add Book */}
+          <input
+            type="text"
+            placeholder="Book Title"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Author"
+            value={newAuthor}
+            onChange={(e) => setNewAuthor(e.target.value)}
+          />
+          <button onClick={addBook}>➕ Add Book</button>
+
+          {/* 📖 Book List */}
+          <div className="book-list">
+            {filteredBooks.length > 0 ? (
+              filteredBooks.map((book, index) => (
+                <div key={index} className="book-card">
+                  <div className="book-info">
+                    <strong>{book.title}</strong> <br />
+                    <small>{book.author}</small>
+                  </div>
+                  <button
+                    className="remove-btn"
+                    onClick={() => removeBook(index)}
+                  >
+                    ❌ Remove
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p style={{ textAlign: "center", color: "#bbb" }}>
+                No books found...
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<Library />);
+  </script>
+</body>
+</html>
