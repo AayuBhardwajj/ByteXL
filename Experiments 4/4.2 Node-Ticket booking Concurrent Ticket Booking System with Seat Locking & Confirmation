@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Node-Ticket Booking — Concurrent Seat Locking Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#071227;
+    --panel:#071a2b;
+    --card:#0b1630;
+    --accent:#7c5cff;
+    --accent-2:#4ad6ff;
+    --muted:#98a6bd;
+    --success:#2dd4bf;
+    --danger:#ff7a7a;
+    --glass: rgba(255,255,255,0.03);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial; background:linear-gradient(180deg,#031023 0%, #071227 70%); color:#e6eef8;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    padding:18px;
+  }
+
+  .wrap{max-width:1100px;margin:0 auto}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{display:flex;gap:12px;align-items:center}
+  .logo{width:54px;height:54px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-weight:800;color:#021125}
+  h1{margin:0;font-size:20px}
+  .sub{font-size:13px;color:var(--muted)}
+
+  .top-controls{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}
+  .btn{background:linear-gradient(90deg,var(--accent),var(--accent-2));padding:10px 14px;border-radius:10px;border:0;color:#021125;font-weight:700;cursor:pointer}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+  .select{padding:10px;border-radius:10px;border:0;background:var(--glass);color:inherit}
+
+  main{display:grid;grid-template-columns:1fr 360px;gap:18px;margin-top:18px}
+  @media (max-width:980px){ main{grid-template-columns:1fr} }
+
+  /* Seat map card */
+  .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 8px 40px rgba(2,6,23,0.6)}
+  .seat-map{display:flex;flex-direction:column;gap:10px;align-items:center}
+  .screen{width:80%;max-width:720px;padding:8px;border-radius:10px;background:linear-gradient(90deg,#0b2a4a,#052037);text-align:center;color:var(--muted);font-size:13px}
+  .rows{display:grid;gap:8px;padding:12px;justify-items:center}
+  .row{display:flex;gap:8px}
+  .seat{
+    width:46px;height:46px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
+    font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,0.04);
+    transition:transform .12s ease, box-shadow .12s ease;
+    background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));
+  }
+  .seat:hover{transform:translateY(-4px);box-shadow:0 8px 22px rgba(2,6,23,0.5)}
+  .seat.small{width:36px;height:36px;font-size:13px}
+  .seat.available{background:linear-gradient(180deg,#08233e,#063046);color:#bfe6ff}
+  .seat.locked{background:linear-gradient(180deg,#4a3b7f,#4d5ea8);color:#fff;opacity:0.95}
+  .seat.booked{background:linear-gradient(180deg,#0a3b2f,#063725);color:#bfffe9}
+  .seat.own{outline:3px solid rgba(125,92,255,0.22)}
+
+  .legend{display:flex;gap:8px;align-items:center;margin-top:12px}
+  .legend .item{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px}
+  .legend .sw{width:18px;height:18px;border-radius:6px}
+
+  /* sidebar */
+  .meta{display:flex;flex-direction:column;gap:12px}
+  .box{padding:12px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.03)}
+  .selected-list{display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto}
+  .sel-item{display:flex;justify-content:space-between;gap:8px;background:rgba(255,255,255,0.01);padding:8px;border-radius:8px}
+  .small{font-size:13px;color:var(--muted)}
+  input,select{padding:10px;border-radius:8px;border:0;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit;width:100%}
+
+  .toast{position:fixed;right:20px;bottom:20px;min-width:240px;background:#071226;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 10px 30px rgba(2,6,23,0.6);color:#eaf6ff}
+
+  footer{margin-top:18px;color:var(--muted);font-size:13px;text-align:center}
+
+  /* accessibility focus */
+  .seat:focus{outline:3px solid rgba(125,92,255,0.22)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">TB</div>
+      <div>
+        <h1>Node-Ticket Booking</h1>
+        <div class="sub">Concurrent seat locking demo — try in multiple tabs to simulate users</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;">
+      <div class="small" id="sessionInfo"></div>
+    </div>
+  </header>
+
+  <div class="top-controls">
+    <div style="display:flex;gap:8px;align-items:center">
+      <label class="small" style="margin-right:6px">Rows</label>
+      <select id="rows" class="select">
+        <option>6</option><option>7</option><option>8</option>
+      </select>
+      <label class="small" style="margin-left:10px;margin-right:6px">Cols</label>
+      <select id="cols" class="select">
+        <option>8</option><option>9</option><option>10</option>
+      </select>
+      <button class="btn ghost" id="resetLayout">Reset Layout</button>
+    </div>
+
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <div class="small">Hold time</div>
+      <select id="holdTime" class="select">
+        <option value="90">90s</option>
+        <option value="120" selected>120s</option>
+        <option value="180">180s</option>
+      </select>
+      <button class="btn" id="clearAll">Clear All Bookings</button>
+    </div>
+  </div>
+
+  <main>
+    <section class="card">
+      <div class="seat-map">
+        <div class="screen">SCREEN</div>
+        <div id="rowsContainer" class="rows"></div>
+
+        <div class="legend">
+          <div class="item"><div class="sw" style="background:linear-gradient(180deg,#08233e,#063046)"></div> Available</div>
+          <div class="item"><div class="sw" style="background:linear-gradient(180deg,#4a3b7f,#4d5ea8)"></div> Locked</div>
+          <div class="item"><div class="sw" style="background:linear-gradient(180deg,#0a3b2f,#063725)"></div> Booked</div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="meta">
+      <div class="box">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>Selected Seats</strong><div class="small">Lock holds shared across tabs</div></div>
+          <div class="small" id="timerSummary">—</div>
+        </div>
+
+        <div class="selected-list" id="selectedList" style="margin-top:12px"></div>
+
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn" id="confirmBtn">Confirm Purchase</button>
+          <button class="btn ghost" id="releaseBtn">Cancel Selection</button>
+        </div>
+      </div>
+
+      <div class="box" style="display:flex;flex-direction:column;gap:8px">
+        <div><strong>Booking Details</strong></div>
+        <input id="buyerName" placeholder="Your name" />
+        <input id="buyerEmail" placeholder="Email" type="email" />
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="quickFill">Quick Fill Demo</button>
+          <button class="btn ghost" id="exportBtn">Export Bookings</button>
+        </div>
+      </div>
+
+      <div class="box small" style="text-align:center">
+        Tip: Open another tab to the same page to test concurrent locking. Locks automatically expire.
+      </div>
+    </aside>
+  </main>
+
+  <footer>Built for demo — localStorage-based locking & synchronization</footer>
+</div>
+
+<!-- Toast container -->
+<div id="toast" style="display:none" class="toast"></div>
+
+<script>
+/*
+Concurrent Ticket Booking (client-only).
+Mechanism:
+- seats stored in localStorage under key "tb_seats_v1"
+- each seat = { id, status: 'available'|'locked'|'booked', lockedBy, lockExpiresAt, ownerName, ownerEmail, bookedAt }
+- locks are set with expiresAt timestamp; a background loop clears expired locks.
+- This tab has a sessionId (random). Multiple tabs simulate multiple users and sync via storage events.
+- Hold time is configurable.
+*/
+
+const STORAGE_KEY = 'tb_seats_v1';
+const SESSION_KEY = 'tb_session_id';
+const sessionId = getOrCreateSessionId();
+document.getElementById('sessionInfo').textContent = 'Session: ' + sessionId.slice(0,8);
+
+const rowsSelect = document.getElementById('rows');
+const colsSelect = document.getElementById('cols');
+const rowsContainer = document.getElementById('rowsContainer');
+const holdTimeSelect = document.getElementById('holdTime');
+const selectedList = document.getElementById('selectedList');
+const timerSummary = document.getElementById('timerSummary');
+const confirmBtn = document.getElementById('confirmBtn');
+const releaseBtn = document.getElementById('releaseBtn');
+const clearAll = document.getElementById('clearAll');
+const resetLayout = document.getElementById('resetLayout');
+const exportBtn = document.getElementById('exportBtn');
+const quickFill = document.getElementById('quickFill');
+
+let seats = []; // local copy
+let selectedSeats = new Set(); // seat IDs locked by this session
+let tickInterval = null;
+let cleanupInterval = null;
+
+// Initialize layout on first run or when layout changed
+function initLayout(rows = parseInt(rowsSelect.value), cols = parseInt(colsSelect.value)) {
+  const layout = loadLayout();
+  if (!layout || layout.rows !== rows || layout.cols !== cols) {
+    // create fresh seats
+    seats = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        seats.push({
+          id: `R${r+1}C${c+1}`,
+          row: r+1, col: c+1,
+          status: 'available',
+          lockedBy: null,
+          lockExpiresAt: null,
+          ownerName: null, ownerEmail: null, bookedAt: null
+        });
+      }
+    }
+    saveSeats();
+  } else {
+    seats = layout.seats;
+  }
+  renderSeats();
+}
+
+// Load seats from localStorage
+function loadSeats() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('loadSeats err', e);
+    return null;
+  }
+}
+function saveSeats() {
+  const payload = { rows: parseInt(rowsSelect.value), cols: parseInt(colsSelect.value), seats };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  // trigger storage event across tabs by setting another key with timestamp
+  localStorage.setItem('tb_last_update', Date.now().toString());
+}
+function loadLayout() {
+  return loadSeats();
+}
+
+function renderSeats() {
+  // layout grid
+  const rows = parseInt(rowsSelect.value);
+  const cols = parseInt(colsSelect.value);
+  rowsContainer.style.gridTemplateRows = `repeat(${rows}, auto)`;
+  rowsContainer.innerHTML = '';
+
+  // build rows
+  for (let r = 1; r <= rows; r++) {
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'row';
+    for (let c = 1; c <= cols; c++) {
+      const id = `R${r}C${c}`;
+      const seat = seats.find(s => s.id === id);
+      const btn = document.createElement('button');
+      btn.className = 'seat';
+      btn.dataset.id = id;
+      btn.setAttribute('aria-label', `Seat ${id}`);
+      btn.setAttribute('tabindex', 0);
+
+      if (!seat) {
+        btn.textContent = id;
+        btn.classList.add('small');
+        btn.disabled = true;
+      } else {
+        btn.textContent = seat.col;
+        updateSeatClass(btn, seat);
+        btn.addEventListener('click', () => onSeatClick(seat.id));
+      }
+      rowDiv.appendChild(btn);
+    }
+    rowsContainer.appendChild(rowDiv);
+  }
+  refreshSidebar();
+}
+
+function updateSeatClass(btn, seat) {
+  btn.className = 'seat'; // reset
+  if (seat.status === 'available') {
+    btn.classList.add('available');
+    btn.title = `Available — ${seat.id}`;
+  } else if (seat.status === 'locked') {
+    btn.classList.add('locked');
+    btn.title = `Locked by ${seat.lockedBy === sessionId ? 'you' : seat.lockedBy?.slice(0,8)} — expires ${new Date(seat.lockExpiresAt).toLocaleTimeString()}`;
+    if (seat.lockedBy === sessionId) btn.classList.add('own');
+  } else if (seat.status === 'booked') {
+    btn.classList.add('booked');
+    btn.title = `Booked by ${seat.ownerName || seat.ownerEmail || 'someone'} at ${seat.bookedAt ? new Date(seat.bookedAt).toLocaleString() : ''}`;
+  }
+}
+
+function onSeatClick(id) {
+  const seat = seats.find(s => s.id === id);
+  if (!seat) return;
+  // if booked -> show info
+  if (seat.status === 'booked') {
+    toast(`Seat ${id} already booked by ${seat.ownerName || seat.ownerEmail || 'someone'}.`);
+    return;
+  }
+  // if locked by another -> cannot select
+  if (seat.status === 'locked' && seat.lockedBy !== sessionId) {
+    toast(`Seat ${id} is on hold by another user (expires ${new Date(seat.lockExpiresAt).toLocaleTimeString()}).`);
+    return;
+  }
+  // If available -> try to lock
+  if (seat.status === 'available') {
+    tryLockSeat(id);
+    return;
+  }
+  // If locked by me -> toggle off (release)
+  if (seat.status === 'locked' && seat.lockedBy === sessionId) {
+    releaseSeat(id);
+    return;
+  }
+}
+
+// Try to lock seat with a compare-and-set style loop to reduce race
+function tryLockSeat(id) {
+  const holdSeconds = parseInt(holdTimeSelect.value);
+  const attempt = () => {
+    const currentLayout = loadSeats();
+    if (!currentLayout) return initLayout();
+    const localSeats = currentLayout.seats;
+    const idx = localSeats.findIndex(s => s.id === id);
+    if (idx === -1) return;
+    const s = localSeats[idx];
+
+    // if seat became unavailable or locked by other, abort
+    if (s.status === 'booked') {
+      toast(`Seat ${id} just got booked.`);
+      seats = localSeats; saveSeats(); renderSeats(); return;
+    }
+    if (s.status === 'locked' && s.lockedBy !== sessionId && s.lockExpiresAt > Date.now()) {
+      toast(`Seat ${id} locked by another user.`);
+      seats = localSeats; saveSeats(); renderSeats(); return;
+    }
+
+    // set lock
+    s.status = 'locked';
+    s.lockedBy = sessionId;
+    s.lockExpiresAt = Date.now() + holdSeconds * 1000;
+    // commit
+    localSeats[idx] = s;
+    // write back atomically
+    const payload = { rows: currentLayout.rows, cols: currentLayout.cols, seats: localSeats };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem('tb_last_update', Date.now().toString());
+    // reload our local view
+    seats = localSeats;
+    selectedSeats.add(id);
+    renderSeats();
+    toast(`Seat ${id} is on hold for ${holdSeconds} seconds.`);
+  };
+
+  // small optimistic delay to reduce race (not required)
+  attempt();
+}
+
+// Release seat locked by this session
+function releaseSeat(id) {
+  const layout = loadSeats();
+  if (!layout) return;
+  const idx = layout.seats.findIndex(s => s.id === id);
+  if (idx === -1) return;
+  const s = layout.seats[idx];
+  if (s.lockedBy !== sessionId) {
+    toast(`Cannot release seat ${id} — not locked by you.`);
+    seats = layout.seats; saveSeats(); renderSeats(); return;
+  }
+  s.status = 'available';
+  s.lockedBy = null;
+  s.lockExpiresAt = null;
+  layout.seats[idx] = s;
+  seats = layout.seats;
+  saveSeats();
+  selectedSeats.delete(id);
+  renderSeats();
+  toast(`Released seat ${id}.`);
+}
+
+// Confirm booking for currently locked seats (by this session)
+function confirmBooking() {
+  const toConfirm = seats.filter(s => s.status === 'locked' && s.lockedBy === sessionId);
+  if (!toConfirm.length) { toast('No seats locked by you to confirm.'); return; }
+  const name = document.getElementById('buyerName').value.trim();
+  const email = document.getElementById('buyerEmail').value.trim();
+  if (!name || !email) { toast('Provide name and email to confirm booking.'); return; }
+
+  // commit booking
+  const layout = loadSeats();
+  if (!layout) return;
+  const now = Date.now();
+  for (let s of layout.seats) {
+    if (s.status === 'locked' && s.lockedBy === sessionId) {
+      s.status = 'booked';
+      s.ownerName = name;
+      s.ownerEmail = email;
+      s.bookedAt = now;
+      s.lockedBy = null;
+      s.lockExpiresAt = null;
+      selectedSeats.delete(s.id);
+    }
+  }
+  seats = layout.seats;
+  saveSeats();
+  renderSeats();
+  toast(`Confirmed ${toConfirm.length} seat(s). Enjoy the show!`);
+}
+
+// Periodic cleanup of expired locks
+function cleanupExpiredLocks() {
+  const layout = loadSeats();
+  if (!layout) return;
+  let changed = false;
+  const now = Date.now();
+  for (let s of layout.seats) {
+    if (s.status === 'locked' && s.lockExpiresAt && s.lockExpiresAt <= now) {
+      // expire
+      s.status = 'available';
+      s.lockedBy = null;
+      s.lockExpiresAt = null;
+      changed = true;
+      // remove from our selected set if it belonged to us
+      selectedSeats.delete(s.id);
+    }
+  }
+  if (changed) {
+    seats = layout.seats;
+    saveSeats();
+    renderSeats();
+  }
+}
+
+// Release all seats locked by this session
+function releaseAllMyLocks() {
+  const layout = loadSeats();
+  if (!layout) return;
+  let changed = false;
+  for (let s of layout.seats) {
+    if (s.status === 'locked' && s.lockedBy === sessionId) {
+      s.status = 'available';
+      s.lockedBy = null;
+      s.lockExpiresAt = null;
+      changed = true;
+    }
+  }
+  if (changed) {
+    seats = layout.seats;
+    saveSeats();
+    selectedSeats.clear();
+    renderSeats();
+    toast('Released all your locks.');
+  } else {
+    toast('No locks to release.');
+  }
+}
+
+// Clear all bookings (admin action)
+function clearAllBookings() {
+  if (!confirm('Clear all bookings and locks? This cannot be undone.')) return;
+  const rows = parseInt(rowsSelect.value);
+  const cols = parseInt(colsSelect.value);
+  seats = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) seats.push({
+    id: `R${r+1}C${c+1}`, row:r+1, col:c+1, status:'available', lockedBy:null, lockExpiresAt:null, ownerName:null, ownerEmail:null, bookedAt:null
+  });
+  selectedSeats.clear();
+  saveSeats();
+  renderSeats();
+  toast('All bookings cleared.');
+}
+
+// Reset layout to change rows/cols
+function resetSeatLayout() {
+  if (!confirm('Change layout? This will reset all bookings and locks.')) return;
+  const rows = parseInt(rowsSelect.value);
+  const cols = parseInt(colsSelect.value);
+  seats = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) seats.push({
+    id: `R${r+1}C${c+1}`, row:r+1, col:c+1, status:'available', lockedBy:null, lockExpiresAt:null, ownerName:null, ownerEmail:null, bookedAt:null
+  });
+  selectedSeats.clear();
+  saveSeats();
+  renderSeats();
+  toast('Layout changed and seats reset.');
+}
+
+function refreshSidebar() {
+  // show locked-by-me seats in selectedList
+  selectedList.innerHTML = '';
+  const myLocks = seats.filter(s => s.status === 'locked' && s.lockedBy === sessionId);
+  if (!myLocks.length) {
+    selectedList.innerHTML = '<div class="small">No seats held</div>';
+    timerSummary.textContent = '—';
+    return;
+  }
+  myLocks.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'sel-item';
+    const left = document.createElement('div');
+    left.innerHTML = `<strong>${s.id}</strong><div class="small">expires ${new Date(s.lockExpiresAt).toLocaleTimeString()}</div>`;
+    const right = document.createElement('div');
+    right.style.display = 'flex'; right.style.flexDirection = 'column'; right.style.alignItems = 'flex-end';
+    const tm = document.createElement('div');
+    tm.className = 'small';
+    const rem = Math.max(0, Math.round((s.lockExpiresAt - Date.now())/1000));
+    tm.textContent = `${rem}s`;
+    const btns = document.createElement('div');
+    btns.style.display='flex'; btns.style.gap='6px'; btns.style.marginTop='6px';
+    const rel = document.createElement('button'); rel.className='btn ghost'; rel.textContent='Release';
+    rel.style.padding='6px 8px'; rel.onclick = ()=> releaseSeat(s.id);
+    btns.appendChild(rel);
+    right.appendChild(tm);
+    right.appendChild(btns);
+    div.appendChild(left); div.appendChild(right);
+    selectedList.appendChild(div);
+  });
+
+  // summary timer = min remaining among my locks
+  const rems = myLocks.map(s => Math.max(0, s.lockExpiresAt - Date.now()));
+  const minRem = Math.min(...rems);
+  timerSummary.textContent = `${Math.ceil(minRem/1000)}s until earliest expiry`;
+}
+
+// Storage event handler to sync across tabs
+window.addEventListener('storage', (ev) => {
+  if (ev.key === STORAGE_KEY || ev.key === 'tb_last_update') {
+    // reload seats and render
+    const layout = loadSeats();
+    if (layout) {
+      seats = layout.seats;
+      renderSeats();
+    }
+  }
+});
+
+// periodic tick to update countdowns and clear expired locks
+function startTickers() {
+  if (tickInterval) clearInterval(tickInterval);
+  if (cleanupInterval) clearInterval(cleanupInterval);
+
+  tickInterval = setInterval(() => {
+    // update countdowns in sidebar and tooltips
+    const elems = document.querySelectorAll('.seat');
+    elems.forEach(btn => {
+      const id = btn.dataset.id;
+      const s = seats.find(x => x.id === id);
+      if (s) updateSeatClass(btn, s);
+    });
+    refreshSidebar();
+  }, 800);
+
+  cleanupInterval = setInterval(() => cleanupExpiredLocks(), 2000);
+}
+
+// utility: show a temporary toast
+let toastTimer = null;
+function toast(msg, ms = 3000) {
+  const t = document.getElementById('toast');
+  t.style.display = 'block';
+  t.textContent = msg;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.style.display='none', ms);
+}
+
+function getOrCreateSessionId() {
+  let sid = localStorage.getItem(SESSION_KEY);
+  if (!sid) {
+    sid = 'sess-' + Math.random().toString(36).slice(2,12);
+    localStorage.setItem(SESSION_KEY, sid);
+  }
+  return sid;
+}
+
+// Export bookings as JSON
+function exportBookings() {
+  const booked = seats.filter(s => s.status === 'booked');
+  if (!booked.length) { toast('No bookings to export.'); return; }
+  const dataStr = JSON.stringify(booked, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bookings_${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('Export started.');
+}
+
+// Quick fill demo
+function quickFillDemo() {
+  document.getElementById('buyerName').value = 'Demo User';
+  document.getElementById('buyerEmail').value = `${sessionId.slice(0,8)}@demo.local`;
+  toast('Demo details filled. Lock some seats and confirm to book.');
+}
+
+// Wire up buttons
+confirmBtn.addEventListener('click', confirmBooking);
+releaseBtn.addEventListener('click', releaseAllMyLocks);
+clearAll.addEventListener('click', clearAllBookings);
+resetLayout.addEventListener('click', resetSeatLayout);
+exportBtn.addEventListener('click', exportBookings);
+quickFill.addEventListener('click', quickFillDemo);
+
+// Initialize
+(function start() {
+  // set selects to saved layout if any
+  const layout = loadLayout();
+  if (layout) {
+    rowsSelect.value = layout.rows || rowsSelect.value;
+    colsSelect.value = layout.cols || colsSelect.value;
+  }
+  initLayout(parseInt(rowsSelect.value), parseInt(colsSelect.value));
+  startTickers();
+  // When rows / cols / hold time change, re-init or just re-render
+  rowsSelect.addEventListener('change', () => initLayout(parseInt(rowsSelect.value), parseInt(colsSelect.value)));
+  colsSelect.addEventListener('change', () => initLayout(parseInt(rowsSelect.value), parseInt(colsSelect.value)));
+  holdTimeSelect.addEventListener('change', () => toast('Hold time set to ' + holdTimeSelect.value + 's'));
+})();
+</script>
+</body>
+</html>
