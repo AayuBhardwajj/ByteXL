@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Playing Card Collection</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f7f9fc;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    header {
+      background: #4a90e2;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+      width: 100%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    main {
+      width: 100%;
+      max-width: 900px;
+      padding: 1rem;
+    }
+    .form-container {
+      background: white;
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .form-container input {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    .form-container button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      background: #4a90e2;
+      color: white;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .form-container button:hover {
+      background: #357ab8;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .card h3 {
+      margin: 0 0 0.5rem;
+    }
+    .card p {
+      margin: 0.25rem 0;
+    }
+    .actions {
+      margin-top: 1rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+    .actions button {
+      flex: 1;
+      padding: 0.4rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .edit-btn {
+      background: #f5a623;
+      color: white;
+    }
+    .edit-btn:hover {
+      background: #d48806;
+    }
+    .delete-btn {
+      background: #e94e4e;
+      color: white;
+    }
+    .delete-btn:hover {
+      background: #c93030;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎴 Playing Card Collection</h1>
+  </header>
+  <main>
+    <section class="form-container">
+      <input type="text" id="suit" placeholder="Suit (e.g., Hearts)" />
+      <input type="text" id="rank" placeholder="Rank (e.g., Ace)" />
+      <button onclick="addCard()">Add Card</button>
+    </section>
+    <section>
+      <h2>Your Collection</h2>
+      <div id="cards" class="cards"></div>
+    </section>
+  </main>
+
+  <script>
+    const API_URL = "http://localhost:3000/cards"; // Update if backend runs elsewhere
+
+    async function fetchCards() {
+      const res = await fetch(API_URL);
+      const data = await res.json();
+      renderCards(data);
+    }
+
+    async function addCard() {
+      const suit = document.getElementById("suit").value.trim();
+      const rank = document.getElementById("rank").value.trim();
+      if (!suit || !rank) return alert("Please enter both suit and rank");
+
+      await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suit, rank }),
+      });
+
+      document.getElementById("suit").value = "";
+      document.getElementById("rank").value = "";
+      fetchCards();
+    }
+
+    async function deleteCard(id) {
+      await fetch(`${API_URL}/${id}`, { method: "DELETE" });
+      fetchCards();
+    }
+
+    async function editCard(id, oldSuit, oldRank) {
+      const suit = prompt("Enter new suit:", oldSuit);
+      const rank = prompt("Enter new rank:", oldRank);
+      if (!suit || !rank) return;
+
+      await fetch(`${API_URL}/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suit, rank }),
+      });
+      fetchCards();
+    }
+
+    function renderCards(cards) {
+      const container = document.getElementById("cards");
+      container.innerHTML = "";
+      cards.forEach(card => {
+        const div = document.createElement("div");
+        div.className = "card";
+        div.innerHTML = `
+          <h3>${card.rank} of ${card.suit}</h3>
+          <p><b>ID:</b> ${card.id}</p>
+          <div class="actions">
+            <button class="edit-btn" onclick="editCard('${card.id}','${card.suit}','${card.rank}')">Edit</button>
+            <button class="delete-btn" onclick="deleteCard('${card.id}')">Delete</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    fetchCards();
+  </script>
+</body>
+</html>
