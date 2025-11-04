@@ -1,0 +1,56 @@
+name: CI/CD
+
+on:
+push:
+branches: [ main ]
+pull_request:
+branches: [ main ]
+
+jobs:
+build-and-test:
+runs-on: ubuntu-latest
+steps:
+- uses: actions/checkout@v4
+
+- name: Use Node.js
+uses: actions/setup-node@v4
+with:
+node-version: '18'
+
+- name: Install dependencies
+run: npm ci
+
+- name: Run tests
+run: npm test --silent
+
+- name: Build
+run: npm run build
+
+docker-image:
+needs: build-and-test
+runs-on: ubuntu-latest
+steps:
+- uses: actions/checkout@v4
+
+- name: Build Docker image
+run: |
+docker build -t ${{ secrets.DOCKER_REGISTRY }}/myapp:${{ github.sha }} .
+
+- name: Login to registry
+env:
+REG_USER: ${{ secrets.DOCKER_USERNAME }}
+REG_PASS: ${{ secrets.DOCKER_PASSWORD }}
+run: |
+echo $REG_PASS | docker login ${{ secrets.DOCKER_REGISTRY }} -u $REG_USER --password-stdin
+
+- name: Push Docker image
+run: |
+docker push ${{ secrets.DOCKER_REGISTRY }}/myapp:${{ github.sha }}
+
+deploy:
+needs: docker-image
+runs-on: ubuntu-latest
+if: github.ref == 'refs/heads/main'
+steps:
+- name: Deploy placeholder step
+run: echo "Replace with actual deploy (SSH / Kubernetes / cloud cli)."
